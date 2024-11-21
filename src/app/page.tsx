@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import useBuilder from "@/stores/store";
 import { ImagePlus, Edit, RatioIcon as AspectRatio, PaintBucket, Type, ImageIcon } from 'lucide-react';
-import { useState } from "react";
+import Link from "next/link";
+import { ChangeEvent, useState } from "react";
+import { useStore } from "zustand";
 
 
 interface FeatureCardProps {
@@ -27,11 +30,13 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
 }
 
 export default function Home() {
-  const [imageUploaded, setImageUploaded] = useState(false);
+  const { imageUploaded, setImageUploaded } = useBuilder();
 
-  const handleImageUpload = (event) => {
-    if (event.target.files.length > 0) {
-      setImageUploaded(true);
+  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
+      console.log("image", event.target.files[0]);
+
+      setImageUploaded(event.target.files[0]);
     }
   };
 
@@ -59,13 +64,16 @@ export default function Home() {
                 onChange={handleImageUpload}
                 className="w-full sm:w-64"
               />
-              <Button
-                size="lg"
-                className={`transition-all duration-300 ease-in-out ${imageUploaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
-                disabled={!imageUploaded}
-              >
-                Empezar a editar
-              </Button>
+
+              <Link href="/builder">
+                <Button
+                  size="lg"
+                  className={`transition-all duration-300 ease-in-out ${imageUploaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+                  disabled={!imageUploaded}
+                >
+                  Empezar a editar
+                </Button>
+              </Link>
             </div>
           </div>
         </section>
