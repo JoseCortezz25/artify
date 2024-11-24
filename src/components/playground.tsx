@@ -103,6 +103,7 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
           <Button onClick={addTextIntoCanvas}>
             Añadir texto
           </Button>
+
         </li>
         <li>
           <Button className="">
