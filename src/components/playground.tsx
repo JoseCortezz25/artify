@@ -1,10 +1,13 @@
 "use client";
-import { useEffect, useRef } from "react";
-import { Canvas, Image } from "fabric";
+import { MutableRefObject, useEffect, useRef, useState } from "react";
+import { Canvas, Image, IText } from "fabric";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fabricCanvasRef = useRef<Canvas | null>(null);
+  const [text, setText] = useState<string>("");
 
   useEffect(() => {
     // Inicializar el canvas de Fabric.js una vez
@@ -61,10 +64,57 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
     }
   }, [imageUploaded]);
 
+  const addTextIntoCanvas = () => {
+    if (fabricCanvasRef.current) {
+      const textObject = new IText(text, {
+        left: fabricCanvasRef.current.getWidth() / 2,
+        top: fabricCanvasRef.current.getHeight() / 2,
+        originX: "center",
+        originY: "center",
+        fontSize: 24,
+        fill: "black",
+        selectable: true,
+        hasControls: true,
+        hasBorders: true,
+        hasRotatingPoint: true
+      });
+
+      fabricCanvasRef.current.add(textObject);
+      fabricCanvasRef.current.renderAll();
+    }
+  };
+
+
   return (
-    <div className="w-[500px] h-[600px] border-[3px] border-dotted">
-      <canvas ref={canvasRef} id="canvas" className="w-full h-full" />
-    </div>
+    <section>
+      <ul className="flex flex-col gap-3">
+        <li>
+          <Button className="">
+            Añadir imagen
+          </Button>
+        </li>
+        <li>
+          <Input
+            type="text"
+            placeholder="Escribe el texto"
+            onChange={(e) => setText(e.target.value)}
+            value={text}
+          />
+          <Button onClick={addTextIntoCanvas}>
+            Añadir texto
+          </Button>
+        </li>
+        <li>
+          <Button className="">
+            Añadir relleno a la foto
+          </Button>
+        </li>
+      </ul>
+      {/* <Sidebar canvasRef={canvasRef} fabricCanvasRef={fabricCanvasRef} /> */}
+      <div className="w-[500px] h-[600px] border-[3px] border-dotted">
+        <canvas ref={canvasRef} id="canvas" className="w-full h-full" />
+      </div>
+    </section>
   );
 };
 
