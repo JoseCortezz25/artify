@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Canvas, Image, IText, Rect } from "fabric";
+import { Canvas, Image, IText } from "fabric";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
@@ -8,9 +8,12 @@ import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { Bold, Italic, Underline } from "lucide-react";
 import { Separator } from "./ui/separator";
 import { reducerText, TextState, TextAction } from "@/hooks/use-text";
-import { Select, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Select, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./ui/select";
 import { SelectContent } from "@radix-ui/react-select";
 import { Label } from "./ui/label";
+
+const CANVAS_MAX_WIDTH = 500;
+const CANVAS_MAX_HEIGHT = 600;
 
 const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -19,11 +22,7 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
   const fabricCanvasRef = useRef<Canvas | null>(null);
   const [aspectRatio, setAspectRatio] = useState<string>('');
   const [fillColor, setFillColor] = useState<string>('#ffffff');
-  const backgroundRectRef = useRef<Rect | null>(null);
-
-  // Tamaño máximo del contenedor
-  const maxContainerWidth = 500;
-  const maxContainerHeight = 600;
+  const imageRef = useRef<Image | null>(null);
 
   enum DefaultAspectRatio {
     landscape = "16/9",
@@ -43,30 +42,65 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
     { label: "3:4", value: DefaultAspectRatio.fullVertical }
   ];
 
-  const calculateCanvasDimensions = (ratio: string, maxContainerWidth: number, maxContainerHeight: number) => {
-    const [widthRatio, heightRatio] = ratio.split('/').map(num => parseFloat(num.trim()));
-    const aspectRatioValue = widthRatio / heightRatio;
+  const calculateCanvasDimensions = (ratio: string) => {
+    const [width, height] = ratio.split('/').map(num => parseFloat(num));
+    const aspectRatio = width / height;
 
-    let canvasWidth = maxContainerWidth;
-    let canvasHeight = canvasWidth / aspectRatioValue;
+    let canvasWidth: number;
+    let canvasHeight: number;
 
-    if (canvasHeight > maxContainerHeight) {
-      canvasHeight = maxContainerHeight;
-      canvasWidth = canvasHeight * aspectRatioValue;
+    if (aspectRatio > 1) {
+      // Landscape
+      canvasWidth = CANVAS_MAX_WIDTH;
+      canvasHeight = CANVAS_MAX_WIDTH / aspectRatio;
+    } else {
+      // Portrait or Square
+      canvasHeight = CANVAS_MAX_HEIGHT;
+      canvasWidth = CANVAS_MAX_HEIGHT * aspectRatio;
     }
 
-    return {
-      width: canvasWidth,
-      height: canvasHeight
-    };
+    return { width: canvasWidth, height: canvasHeight };
+  };
+
+  const resizeCanvas = (dimensions: { width: number; height: number }) => {
+    if (!fabricCanvasRef.current) return;
+
+    const canvas = fabricCanvasRef.current;
+    const currentImage = imageRef.current;
+
+    canvas.setWidth(dimensions.width);
+    canvas.setHeight(dimensions.height);
+    canvas.backgroundColor = fillColor;
+
+    if (currentImage) {
+      // Center image without changing its dimensions
+      currentImage.set({
+        left: canvas.getWidth() / 2,
+        top: canvas.getHeight() / 2,
+        originX: 'center',
+        originY: 'center'
+      });
+
+      // Ensure image maintains its original scale
+      if (currentImage._originalScaleX) {
+        currentImage.set({
+          scaleX: currentImage._originalScaleX,
+          scaleY: currentImage._originalScaleY
+        });
+      }
+    }
+
+    canvas.renderAll();
   };
 
   useEffect(() => {
     if (canvasRef.current && !fabricCanvasRef.current) {
       fabricCanvasRef.current = new Canvas(canvasRef.current, {
-        backgroundColor: '#ffffff',
-        preserveObjectStacking: true
+        width: CANVAS_MAX_WIDTH,
+        height: CANVAS_MAX_HEIGHT,
+        backgroundColor: '#ffffff'
       });
+      setFillColor('#ffffff');
     }
 
     return () => {
@@ -76,13 +110,16 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
   }, []);
 
   useEffect(() => {
-    if (fabricCanvasRef.current && imageUploaded) {
-      const canvas = fabricCanvasRef.current;
-      canvas.clear();
+    if (aspectRatio && fabricCanvasRef.current) {
+      const dimensions = calculateCanvasDimensions(aspectRatio);
+      resizeCanvas(dimensions);
+    }
+  }, [aspectRatio]);
 
-      // Establecer el color de fondo
-      canvas.backgroundColor = fillColor;
-      canvas.renderAll();
+  useEffect(() => {
+    if (fabricCanvasRef.current && imageUploaded) {
+      fabricCanvasRef.current.clear();
+      fabricCanvasRef.current.backgroundColor = fillColor;
 
       const reader = new FileReader();
 
@@ -91,25 +128,35 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
 
         Image.fromURL(result)
           .then((img) => {
-            // Calcular factor de escala para ajustar la imagen al canvas sin distorsión
-            const scale = Math.min(
-              canvas.getWidth() / img.width!,
-              canvas.getHeight() / img.height!
-            );
+            const canvas = fabricCanvasRef.current!;
 
-            img.scale(scale);
+            // Store original dimensions
+            const originalWidth = img.width!;
+            const originalHeight = img.height!;
+
+            // Calculate initial scale to fit the canvas while maintaining aspect ratio
+            const scaleX = canvas.getWidth() / originalWidth;
+            const scaleY = canvas.getHeight() / originalHeight;
+            const scale = Math.min(scaleX, scaleY);
 
             img.set({
               left: canvas.getWidth() / 2,
               top: canvas.getHeight() / 2,
-              originX: "center",
-              originY: "center",
+              originX: 'center',
+              originY: 'center',
+              scaleX: scale,
+              scaleY: scale,
               selectable: true,
               hasControls: true,
               hasBorders: true,
               hasRotatingPoint: true
             });
 
+            // Store original scale for future reference
+            img._originalScaleX = scale;
+            img._originalScaleY = scale;
+
+            imageRef.current = img;
             canvas.add(img);
             canvas.renderAll();
           })
@@ -120,89 +167,7 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
 
       reader.readAsDataURL(imageUploaded);
     }
-  }, [imageUploaded, aspectRatio, fillColor]);
-
-  useEffect(() => {
-    if (fabricCanvasRef.current && imageUploaded) {
-      const canvas = fabricCanvasRef.current;
-
-      // Limpiar el canvas
-      canvas.clear();
-
-      const reader = new FileReader();
-
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-
-        Image.fromURL(result)
-          .then((img) => {
-            // Obtener las dimensiones de la imagen
-            const imgWidth = img.width!;
-            const imgHeight = img.height!;
-            const imgAspectRatio = imgWidth / imgHeight;
-
-            // Calcular las dimensiones del canvas basadas en la imagen
-            let canvasWidth = maxContainerWidth;
-            let canvasHeight = canvasWidth / imgAspectRatio;
-
-            if (canvasHeight > maxContainerHeight) {
-              canvasHeight = maxContainerHeight;
-              canvasWidth = canvasHeight * imgAspectRatio;
-            }
-
-            // Ajustar el tamaño del canvas
-            canvas.setWidth(canvasWidth);
-            canvas.setHeight(canvasHeight);
-
-            // Actualizar el tamaño del elemento canvas en el DOM
-            if (canvasRef.current) {
-              canvasRef.current.width = canvasWidth;
-              canvasRef.current.height = canvasHeight;
-              canvasRef.current.style.width = `${canvasWidth}px`;
-              canvasRef.current.style.height = `${canvasHeight}px`;
-            }
-
-            // Establecer el color de fondo
-            canvas.setBackgroundColor(fillColor, canvas.renderAll.bind(canvas));
-
-            // Escalar la imagen si es más grande que el canvas
-            let scale = 1;
-            if (imgWidth > canvasWidth || imgHeight > canvasHeight) {
-              scale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight);
-              img.scale(scale);
-            }
-
-            // Centrar la imagen en el canvas
-            img.set({
-              left: canvasWidth / 2,
-              top: canvasHeight / 2,
-              originX: "center",
-              originY: "center",
-              selectable: true,
-              hasControls: true,
-              hasBorders: true,
-              hasRotatingPoint: true
-            });
-
-            canvas.add(img);
-            canvas.renderAll();
-          })
-          .catch((error) => {
-            console.error("Error al cargar la imagen", error);
-          });
-      };
-
-      reader.readAsDataURL(imageUploaded);
-    }
-  }, [imageUploaded, fillColor]);
-
-  const addFill = () => {
-    if (!fabricCanvasRef.current) return;
-
-    const canvas = fabricCanvasRef.current;
-    canvas.backgroundColor = fillColor;
-    canvas.renderAll();
-  };
+  }, [imageUploaded]);
 
   const addTextIntoCanvas = () => {
     if (fabricCanvasRef.current) {
@@ -293,7 +258,7 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
                 <Separator className="my-2" />
 
                 <div className="flex flex-col gap-2">
-                  <h3 className="font-semibold text-sm">Vista previa</h3>
+                  <h3 className="font-semibold text-sm">Preview</h3>
                   <span
                     id="text-preview"
                     style={{
@@ -303,7 +268,7 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
                       textDecoration: textState.style?.underline ? "underline" : "none"
                     }}
                   >
-                    {textState.value || "Lorem ipsum dolor sit amet."}
+                    {textState.value || "Lorem, ipsum dolor sit amet consectetur adipisicing elit."}
                   </span>
                 </div>
               </CardContent>
@@ -313,50 +278,50 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-md">
-                  Configurar canvas
+                  Relación de aspecto
                 </CardTitle>
                 <CardDescription>
-                  Ajusta la relación de aspecto y el color de fondo del canvas.
+                  Selecciona la relación de aspecto para el canvas.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label>Relación de aspecto</Label>
-                  <Select onValueChange={(value) => setAspectRatio(value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona una relación de aspecto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {aspectRatios.map((item) => (
-                          <SelectItem
-                            className="w-full bg-white"
-                            key={item.label}
-                            value={item.value}
-                          >
-                            {item.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select onValueChange={(value) => setAspectRatio(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una relación de aspecto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {aspectRatios.map((item) => (
+                        <SelectItem
+                          className="w-full bg-white"
+                          key={item.label}
+                          value={item.value}
+                        >
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
 
                 <Separator className="my-2" />
 
                 <div className="flex flex-col gap-2">
-                  <Label>Color de fondo</Label>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="color"
-                      value={fillColor}
-                      onChange={(e) => setFillColor(e.target.value)}
-                      className="w-full h-10"
-                    />
-                    <Button className="w-full mt-2" onClick={addFill}>
-                      Aplicar
-                    </Button>
-                  </div>
+                  <Label>
+                    Color de fondo
+                  </Label>
+                  <input
+                    type="color"
+                    value={fillColor}
+                    onChange={(e) => {
+                      setFillColor(e.target.value);
+                      if (fabricCanvasRef.current) {
+                        fabricCanvasRef.current.backgroundColor = e.target.value;
+                        fabricCanvasRef.current.renderAll();
+                      }
+                    }}
+                    className="w-full h-8"
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -365,33 +330,30 @@ const Playground = ({ imageUploaded }: { imageUploaded: File | null }) => {
       </section>
 
       <section className="w-[60%] flex justify-center">
-        <div className="flex flex-col gap-3 items-center">
-          <div
-            className="border-[3px] border-dotted flex items-center justify-center"
-            style={{
-              width: maxContainerWidth,
-              height: maxContainerHeight,
-              overflow: 'hidden'
-            }}
-          >
+        <div className="flex flex-col gap-3">
+          <div className="w-[500px] h-[600px] border-[3px] border-dotted flex items-center justify-center">
             <canvas ref={canvasRef} id="canvas" />
           </div>
           <div>
             <Button
               onClick={() => {
-                const dataURL = fabricCanvasRef.current?.toDataURL({
-                  format: 'png',
-                  quality: 1
-                });
-                const a = document.createElement("a");
-                a.href = dataURL!;
-                a.download = "image.png";
-                a.click();
+                const canvas = fabricCanvasRef.current;
+                if (canvas) {
+                  const dataURL = canvas.toDataURL({
+                    format: "png",
+                    quality: 1
+                  });
+                  const link = document.createElement("a");
+                  link.href = dataURL;
+                  link.download = "image.png";
+                  link.click();
+                }
               }}
             >
               Descargar imagen
             </Button>
           </div>
+
         </div>
       </section>
     </section>
