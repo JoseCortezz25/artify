@@ -11,8 +11,6 @@ const Page = () => {
     <div className="flex gap-2 w-full h-screen">
       <div className="container flex justify-center gap-5 items-center">
         <Playground imageUploaded={imageUploaded} />
-        <button >Add Text</button>
-        <button >Fill Canvas</button>
       </div>
     </div>
   );
